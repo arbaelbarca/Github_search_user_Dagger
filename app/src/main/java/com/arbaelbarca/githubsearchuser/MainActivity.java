@@ -1,5 +1,6 @@
 package com.arbaelbarca.githubsearchuser;
 
+import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.Editable;
@@ -9,33 +10,42 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
-import android.widget.Toast;
 
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.arbaelbarca.githubsearchuser.activity.DetailUserActivity;
-import com.arbaelbarca.githubsearchuser.adapter.AdapterListUser;
+import com.arbaelbarca.githubsearchuser.adapter.AdapterListUserNew;
 import com.arbaelbarca.githubsearchuser.baseactivity.BaseActivity;
+import com.arbaelbarca.githubsearchuser.di.component.ApplicationComponent;
+import com.arbaelbarca.githubsearchuser.di.component.DaggerMainActivityComponent;
+import com.arbaelbarca.githubsearchuser.di.component.MainActivityComponent;
 import com.arbaelbarca.githubsearchuser.model.ItemsItem;
+import com.arbaelbarca.githubsearchuser.model.ModelListUser;
+import com.arbaelbarca.githubsearchuser.di.module.MainActivityContextModule;
+import com.arbaelbarca.githubsearchuser.network.ApiServices;
 import com.arbaelbarca.githubsearchuser.onclick.OnClickItem;
-import com.arbaelbarca.githubsearchuser.presenter.ListPresenterImpl;
-import com.arbaelbarca.githubsearchuser.presenter.ListUserPresenter;
+import com.arbaelbarca.githubsearchuser.di.qulifier.ActivityContext;
+import com.arbaelbarca.githubsearchuser.di.qulifier.ApplicationContext;
 import com.arbaelbarca.githubsearchuser.utils.LineItemDivider;
-import com.arbaelbarca.githubsearchuser.view.MainContract;
 
 import java.util.ArrayList;
 
+import javax.inject.Inject;
+
 import butterknife.BindView;
 import butterknife.ButterKnife;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 import static com.arbaelbarca.githubsearchuser.utils.Constants.DATA_ITEMS;
 
-public class MainActivity extends BaseActivity implements MainContract.MainView, View.OnClickListener {
+public class MainActivity extends BaseActivity implements View.OnClickListener, AdapterListUserNew.ClickListener {
 
-    ListUserPresenter presenter;
-    AdapterListUser adapterListUser;
-    MainContract.MainView umainView;
+
+    @Inject
+    AdapterListUserNew adapterListUser;
 
     @BindView(R.id.txtSearchUser)
     EditText txtSearchUser;
@@ -61,6 +71,20 @@ public class MainActivity extends BaseActivity implements MainContract.MainView,
     String getTextSearch;
     ArrayList<ItemsItem> itemArrayList = new ArrayList<>();
 
+
+    @Inject
+    public ApiServices apiInterface;
+
+    @Inject
+    @ApplicationContext
+    public Context mContext;
+
+    @Inject
+    @ActivityContext
+    public Context activityContext;
+
+    MainActivityComponent mainActivityComponent;
+
     OnClickItem onClickItem = pos -> {
         ItemsItem itemsItem = itemArrayList.get(pos);
         Intent intent = new Intent(getApplicationContext(), DetailUserActivity.class);
@@ -74,11 +98,16 @@ public class MainActivity extends BaseActivity implements MainContract.MainView,
         setContentView(R.layout.activity_main);
         ButterKnife.bind(this);
 
+        ApplicationComponent applicationComponent = MyApplication.get(this).getApplicationComponent();
+        mainActivityComponent = DaggerMainActivityComponent.builder()
+                .mainActivityContextModule(new MainActivityContextModule(this))
+                .applicationComponent(applicationComponent)
+                .build();
+
+        mainActivityComponent.injectMainActivity(this);
+
         initial();
 
-
-        presenter = new ListUserPresenter(this, this, new ListPresenterImpl(MainActivity.this, ""));
-        presenter.requestFromDataServer();
 
         txtSearchUser.addTextChangedListener(new TextWatcher() {
             @Override
@@ -109,12 +138,31 @@ public class MainActivity extends BaseActivity implements MainContract.MainView,
         imgClose.setOnClickListener(this);
 
 
+        apiInterface.getListUser("arba", "", "1", "")
+                .enqueue(new Callback<ModelListUser>() {
+                    @Override
+                    public void onResponse(Call<ModelListUser> call, Response<ModelListUser> response) {
+                        getListUser(response.body().getItems());
+                        progressBar.setVisibility(View.GONE);
+                    }
+
+                    @Override
+                    public void onFailure(Call<ModelListUser> call, Throwable t) {
+
+                    }
+                });
+
+    }
+
+    void getListUser(ArrayList<ItemsItem> itemsItems) {
+        itemArrayList = itemsItems;
+        adapterListUser.setData(itemsItems);
+
     }
 
 
     private void addSearchText(String charSequence) {
         itemArrayList.clear();
-        presenter.refreshData(charSequence, String.valueOf(PAGE_START), isLoading);
     }
 
     private void initial() {
@@ -122,40 +170,8 @@ public class MainActivity extends BaseActivity implements MainContract.MainView,
         rvListUser.setLayoutManager(linearLayoutManager);
         rvListUser.setHasFixedSize(true);
         rvListUser.addItemDecoration(new LineItemDivider(this));
-
-    }
-
-    @Override
-    public void showProgress() {
-        progressBar.setVisibility(View.VISIBLE);
-    }
-
-    @Override
-    public void hideProgress() {
-        progressBar.setVisibility(View.GONE);
-    }
-
-    @Override
-    public void setDataToRecyclerView(ArrayList<ItemsItem> modelListUsers) {
-        adapterListUser = new AdapterListUser(this);
-        itemArrayList = modelListUsers;
-        adapterListUser.setData(itemArrayList);
         rvListUser.setAdapter(adapterListUser);
-        adapterListUser.setOnClickItem(onClickItem);
-    }
 
-    @Override
-    public void onResponseFailure(Throwable throwable) {
-        presenter.onFailure(throwable);
-        progressBar.setVisibility(View.GONE);
-        Toast.makeText(getApplicationContext(), "Terjadi kesalahan pada server", Toast.LENGTH_SHORT).show();
-    }
-
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        presenter.onDestroy();
     }
 
 
@@ -164,5 +180,13 @@ public class MainActivity extends BaseActivity implements MainContract.MainView,
         if (view == imgClose) {
             txtSearchUser.setText("");
         }
+    }
+
+    @Override
+    public void launchIntent(int pos) {
+        ItemsItem itemsItem = itemArrayList.get(pos);
+        Intent intent = new Intent(getApplicationContext(), DetailUserActivity.class);
+        intent.putExtra(DATA_ITEMS, itemsItem);
+        startActivity(intent);
     }
 }
