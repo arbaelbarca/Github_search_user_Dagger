@@ -48,7 +48,7 @@ public class RetrofitModule implements Interceptor {
                 .addInterceptor(getLoggingInterceptor())
                 .addInterceptor(chain -> {
                     Request request = chain.request();
-                    credentials = Credentials.basic("08dbcebff49a7da24988","48c6174c28444775a8cb5028013dc552fa654799");
+                    credentials = Credentials.basic("","");//disi dengan username dan password github
                     Request authenticatedRequest = request.newBuilder()
                             .header("Authorization", credentials).build();
                     return chain.proceed(authenticatedRequest);
